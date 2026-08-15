@@ -1,9 +1,10 @@
 [package]
 name = "live-wallpaper"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Lightweight MP4 video live wallpaper for Windows 11"
 license = "MIT"
+authors = ["SAIBORC"]
 
 [dependencies]
 windows = { version = "0.58", features = [

@@ -14,7 +14,6 @@ pub fn init(_appdata_dir: &PathBuf) {
         return;
     }
     *LOG_PATH.lock().unwrap() = Some(dir.join("log.txt"));
-    log("=== LiveWallpaper started ===");
 }
 
 pub fn log(msg: &str) {

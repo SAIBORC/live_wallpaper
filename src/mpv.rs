@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use crate::log;
 use libloading::{Library, Symbol};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
@@ -494,9 +493,6 @@ impl Player {
             "540p" => options.push(("vf", "scale=w=960:h=-2")),
             _ => {}
         }
-        log::log(&format!(
-            "mpv init: vo={vo} gpu-api={gpu_api:?} gpu-context={gpu_context:?} hwdec={hwdec} lite={lite} vsync={sync} downscale={downscale}"
-        ));
         for (k, v) in options {
             let _ = mpv.set_option_string(k, v);
         }
@@ -504,7 +500,7 @@ impl Player {
 
         mpv.initialize()?;
         let _ = mpv.set_property_flag("mute", !audio);
-        let _ = mpv.request_log_messages("info");
+        let _ = mpv.request_log_messages("error");
 
         Ok(Player {
             mpv,

@@ -169,12 +169,10 @@ unsafe extern "system" fn tray_wndproc(
     lparam: LPARAM,
 ) -> LRESULT {
     if msg == WM_DESTROY {
-        log::log(&format!("tray window WM_DESTROY hwnd={:?}", hwnd.0));
         PostQuitMessage(0);
         return LRESULT(0);
     }
     if msg == WM_CLOSE {
-        log::log(&format!("tray window WM_CLOSE hwnd={:?}", hwnd.0));
         let _ = DestroyWindow(hwnd);
         return LRESULT(0);
     }
@@ -200,10 +198,6 @@ unsafe extern "system" fn tray_ll_mouse(code: i32, wparam: WPARAM, lparam: LPARA
                     && ms.pt.y >= r.top - TOL
                     && ms.pt.y <= r.bottom + TOL;
                 if inside {
-                    log::log(&format!(
-                        "tray right-click via mouse hook at {},{}",
-                        ms.pt.x, ms.pt.y
-                    ));
                     let _ = PostMessageW(hwnd, WM_SHOW_MENU, WPARAM(0), LPARAM(0));
                 }
             }
@@ -581,7 +575,6 @@ fn handle_menu(shared: &Arc<AppShared>, id: usize) {
     match id {
         ID_PICK => {
             if let Some(path) = pick_video() {
-                log::log(&format!("picked video: {path}"));
                 {
                     let mut cfg = shared.cfg.lock().unwrap();
                     cfg.video = Some(path.clone());
@@ -675,7 +668,6 @@ fn handle_menu(shared: &Arc<AppShared>, id: usize) {
             }
         }
         ID_QUIT => {
-            log::log("quit requested");
             let _ = shared.tx.send(Cmd::Quit);
             unsafe { PostQuitMessage(0) };
         }
@@ -684,7 +676,6 @@ fn handle_menu(shared: &Arc<AppShared>, id: usize) {
 }
 
 fn show_menu(shared: &Arc<AppShared>, hwnd: HWND) {
-    log::log("show_menu called");
     let cfg = shared.cfg.lock().unwrap().clone();
     let menu = match unsafe { build_menu(&cfg) } {
         Ok(m) => m,
@@ -707,7 +698,6 @@ fn show_menu(shared: &Arc<AppShared>, hwnd: HWND) {
             hwnd,
             None,
         );
-        log::log(&format!("TrackPopupMenu returned {}", r.0));
         let id = r.0 as usize;
         let _ = DestroyMenu(menu);
         if id != 0 {
@@ -783,7 +773,6 @@ pub fn run(shared: Arc<AppShared>, player_thread: JoinHandle<()>) -> i32 {
         nid.uCallbackMessage = WM_TRAY;
         nid.hIcon = app_icon();
         set_tip(&mut nid, "Live Wallpaper");
-        log::log(&format!("tray window hwnd={:?}", hwnd.0));
 
         if !Shell_NotifyIconW(NIM_ADD, &nid).as_bool() {
             let _ = MessageBoxW(
@@ -795,19 +784,15 @@ pub fn run(shared: Arc<AppShared>, player_thread: JoinHandle<()>) -> i32 {
             let _ = DestroyWindow(hwnd);
             return 1;
         }
-        log::log("tray icon ready");
         TRAY_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
 
         match RegisterHotKey(None, HOTKEY_ID, MOD_CONTROL | MOD_ALT, VK_W.0 as u32) {
-            Ok(()) => log::log("hotkey registered"),
+            Ok(()) => {}
             Err(e) => log::log(&format!("hotkey failed: {e}")),
         }
 
         let hook = match SetWindowsHookExW(WH_MOUSE_LL, Some(tray_ll_mouse), hinst, 0) {
-            Ok(h) => {
-                log::log("ll mouse hook installed");
-                Some(h)
-            }
+            Ok(h) => Some(h),
             Err(e) => {
                 log::log(&format!("ll mouse hook failed: {e}"));
                 None
@@ -815,47 +800,24 @@ pub fn run(shared: Arc<AppShared>, player_thread: JoinHandle<()>) -> i32 {
         };
 
         let mut msg = MSG::default();
-        let mut iter_ct: u64 = 0;
         loop {
             let got = GetMessageW(&mut msg, None, 0, 0);
             if !got.as_bool() {
                 break;
             }
             if msg.message == WM_HOTKEY && msg.wParam.0 == HOTKEY_ID as usize {
-                log::log("hotkey pressed");
                 show_menu(&shared, hwnd);
             } else if msg.message == WM_SHOW_MENU && msg.hwnd == hwnd {
                 show_menu(&shared, hwnd);
             } else if msg.message == WM_TRAY && msg.hwnd == hwnd {
                 let lm = msg.lParam.0 as u32;
-                log::log(&format!(
-                    "WM_TRAY lm=0x{lm:x} wparam={}",
-                    msg.wParam.0
-                ));
                 if lm == WM_RBUTTONUP || lm == WM_CONTEXTMENU {
                     show_menu(&shared, hwnd);
                 }
             } else {
-                if msg.message == WM_TRAY || msg.hwnd == hwnd || msg.message == 0x12 {
-                    log::log(&format!(
-                        "ui msg(m): {} hwnd={:?} wparam={} lparam={}",
-                        msg.message,
-                        msg.hwnd.0,
-                        msg.wParam.0,
-                        msg.lParam.0
-                    ));
-                }
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
-            if iter_ct % 2000 == 0 {
-                if IsWindow(hwnd).as_bool() {
-                    log::log("tray window alive");
-                } else {
-                    log::log("tray window DEAD (destroyed externally)");
-                }
-            }
-            iter_ct += 1;
         }
 
         if let Some(h) = hook {
@@ -864,7 +826,6 @@ pub fn run(shared: Arc<AppShared>, player_thread: JoinHandle<()>) -> i32 {
         let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
         let _ = DestroyWindow(hwnd);
         let _ = player_thread.join();
-        log::log("ui exiting");
         0
     }
 }

@@ -103,12 +103,10 @@ fn player_loop(rx: Receiver<Cmd>, cfg: Arc<Mutex<config::Config>>) {
         match run_session(&rx, &cfg) {
             SessionResult::Quit => break,
             SessionResult::Retry => {
-                log::log("wallpaper session ended, re-attaching in 1s...");
                 thread::sleep(std::time::Duration::from_millis(1000));
             }
         }
     }
-    log::log("player thread exiting");
 }
 
 fn ram_mb() -> i64 {
@@ -187,8 +185,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
     } else {
         monitors.into_iter().take(1).collect()
     };
-    log::log(&format!("host={:?} monitors={}", host.0, selected.len()));
-
     let mut surfaces: Vec<HWND> = Vec::new();
     for m in &selected {
         match wallpaper::spawn_surface(host, m, click_through) {
@@ -237,7 +233,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
             blur,
         ) {
             Ok(p) => {
-                log::log(&format!("renderer active: {cand}"));
                 effective = Some(cand.clone());
                 players.push(p);
                 break;
@@ -279,9 +274,8 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
 
     let fit_mode = cfg.lock().unwrap().fit.clone();
     for p in &players {
-        match p.set_fit(&fit_mode) {
-            Ok(()) => log::log(&format!("video fit set: {fit_mode}")),
-            Err(e) => log::log(&format!("set fit {fit_mode}: {e}")),
+        if let Err(e) = p.set_fit(&fit_mode) {
+            log::log(&format!("set fit {fit_mode}: {e}"));
         }
     }
 
@@ -292,11 +286,8 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
         if std::path::Path::new(&path).exists() {
             let start = config::load_pos(&path);
             for p in &players {
-                match p.load_file(&path, start) {
-                    Ok(()) => log::log(&format!(
-                        "loadfile issued: {path} (resume={start:.1}s)"
-                    )),
-                    Err(e) => log::log(&format!("loadfile {path}: {e}")),
+                if let Err(e) = p.load_file(&path, start) {
+                    log::log(&format!("loadfile {path}: {e}"));
                 }
             }
             current_path = Some(path);
@@ -345,50 +336,43 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
                     }
                 }
                 Cmd::SetFit { mode } => {
-                    log::log(&format!("applying video fit: {mode}"));
                     for p in &players {
                         if let Err(e) = p.set_fit(&mode) {
                             log::log(&format!("set fit {mode}: {e}"));
                         }
                     }
                 }
-                Cmd::SetRenderer { name } => {
-                    log::log(&format!("renderer changed to {name}, restarting session"));
+                Cmd::SetRenderer { .. } => {
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
                     return SessionResult::Retry;
                 }
-                Cmd::SetLite { on } => {
-                    log::log(&format!("lite mode set to {on}, restarting session"));
+                Cmd::SetLite { .. } => {
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
                     return SessionResult::Retry;
                 }
-                Cmd::SetVsync { on } => {
-                    log::log(&format!("vsync set to {on}, restarting session"));
+                Cmd::SetVsync { .. } => {
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
                     return SessionResult::Retry;
                 }
-                Cmd::SetDownscale { mode } => {
-                    log::log(&format!("decode downscale set to {mode}, restarting session"));
+                Cmd::SetDownscale { .. } => {
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
                     return SessionResult::Retry;
                 }
-                Cmd::SetHwdec { mode } => {
-                    log::log(&format!("hwdec set to {mode}, restarting session"));
+                Cmd::SetHwdec { .. } => {
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
                     return SessionResult::Retry;
                 }
                 Cmd::Restart => {
-                    log::log("restarting session (monitor mode changed)");
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
@@ -406,7 +390,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
 
         if let Err(e) = rx.try_recv() {
             if matches!(e, std::sync::mpsc::TryRecvError::Disconnected) {
-                log::log("control channel closed (UI gone) - shutting down");
                 save_playback_position(&players);
                 for s in &surfaces {
                     let _ = unsafe { DestroyWindow(*s) };
@@ -416,7 +399,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
         }
 
         if wallpaper::SURFACE_DESTROYED.load(Ordering::SeqCst) {
-            log::log("desktop surface destroyed (explorer restart?)");
             for s in &surfaces {
                 let _ = unsafe { DestroyWindow(*s) };
             }
@@ -434,11 +416,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
             let covered = smart_covered || battery_paused;
             if covered != pause_state {
                 pause_state = covered;
-                log::log(&format!(
-                    "desktop {} (battery_pause={battery_paused}) - video {}",
-                    if smart_covered { "hidden" } else { "visible" },
-                    if covered { "paused" } else { "resumed" }
-                ));
                 for p in &players {
                     let _ = p.set_pause(covered);
                 }
@@ -460,8 +437,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
         iter += 1;
         if iter % 60 == 0 {
             if let Some(p) = players.first() {
-                let s = p.mpv_status();
-                log::log(&format!("status: {s}"));
                 let paused = p.mpv.get_property_flag("pause").unwrap_or(false);
                 let idle = p.mpv.get_property_flag("idle-active").unwrap_or(false);
                 let t = p.mpv.get_property_double("time-pos").unwrap_or(-1.0);
@@ -513,14 +488,12 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
             let ev = p.wait_event(0.05);
             match ev.event_id {
                 mpv::MPV_EVENT_SHUTDOWN => {
-                    log::log("mpv shutdown event");
                     for s in &surfaces {
                         let _ = unsafe { DestroyWindow(*s) };
                     }
                     return SessionResult::Retry;
                 }
                 mpv::MPV_EVENT_FILE_LOADED => {
-                    log::log("mpv: file loaded");
                     last_file_loaded = true;
                     stuck_streak = 0;
                     last_time = -1.0;
@@ -543,14 +516,6 @@ fn run_session(rx: &Receiver<Cmd>, cfg: &Arc<Mutex<config::Config>>) -> SessionR
                 }
                 mpv::MPV_EVENT_END_FILE => {
                     let reason = mpv::end_file_reason(&ev);
-                    log::log(&format!(
-                        "mpv: end file (reason={reason}){}",
-                        if reason == mpv::MPV_END_FILE_REASON_ERROR {
-                            " ERROR"
-                        } else {
-                            ""
-                        }
-                    ));
                     if reason == mpv::MPV_END_FILE_REASON_ERROR {
                         last_file_loaded = false;
                         let path = p
