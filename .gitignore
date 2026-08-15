@@ -1,0 +1,9 @@
+/target
+
+# Built/deploy artifacts
+/dist
+/LiveWallpaper-portable.zip
+*.exe
+
+# Icon design sources (keep app.ico/app.rc, these are the working files)
+/Untitled-1.psd
