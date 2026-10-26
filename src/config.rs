@@ -18,7 +18,7 @@ pub struct Config {
     pub click_through: bool,
     #[serde(default = "d_fit")]
     pub fit: String,
-    #[serde(default = "d_renderer")]
+    #[serde(default = "default_renderer")]
     pub renderer: String,
     #[serde(default)]
     pub lite: bool,
@@ -32,7 +32,7 @@ pub struct Config {
     pub downscale: String,
     #[serde(default = "d_vsync")]
     pub vsync: bool,
-    #[serde(default = "d_hwdec")]
+    #[serde(default = "default_hwdec")]
     pub hwdec: String,
 }
 
@@ -46,14 +46,14 @@ impl Default for Config {
             autostart: false,
             click_through: true,
             fit: "fill".to_string(),
-            renderer: "d3d11".to_string(),
+            renderer: default_renderer(),
             lite: false,
             smart_pause: true,
             dim_when_hidden: true,
             pause_on_battery: true,
             downscale: "off".to_string(),
             vsync: true,
-            hwdec: "auto".to_string(),
+            hwdec: default_hwdec(),
         }
     }
 }
@@ -73,9 +73,22 @@ fn d_click() -> bool {
 fn d_fit() -> String {
     "fill".to_string()
 }
-fn d_renderer() -> String {
+
+#[cfg(target_os = "windows")]
+fn default_renderer() -> String {
     "d3d11".to_string()
 }
+
+#[cfg(target_os = "linux")]
+fn default_renderer() -> String {
+    "gpu".to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn default_renderer() -> String {
+    "gpu".to_string()
+}
+
 fn d_smart() -> bool {
     true
 }
@@ -91,13 +104,47 @@ fn d_downscale() -> String {
 fn d_vsync() -> bool {
     true
 }
-fn d_hwdec() -> String {
+
+#[cfg(target_os = "windows")]
+fn default_hwdec() -> String {
     "auto".to_string()
 }
 
+#[cfg(target_os = "linux")]
+fn default_hwdec() -> String {
+    "auto".to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn default_hwdec() -> String {
+    "auto".to_string()
+}
+
+#[cfg(target_os = "windows")]
 pub fn data_dir() -> PathBuf {
     let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(base).join("LiveWallpaper")
+}
+
+#[cfg(target_os = "linux")]
+pub fn data_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config").join("live-wallpaper")
+    } else {
+        PathBuf::from(".").join("live-wallpaper")
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn data_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("LiveWallpaper")
+    } else {
+        PathBuf::from(".").join("LiveWallpaper")
+    }
 }
 
 pub fn config_path() -> PathBuf {

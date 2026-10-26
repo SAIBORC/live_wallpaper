@@ -1,6 +1,7 @@
-use std::process::Command;
-
+#[cfg(target_os = "windows")]
 fn main() {
+    use std::process::Command;
+
     println!("cargo:rerun-if-changed=app.ico");
     println!("cargo:rerun-if-changed=app.rc");
 
@@ -59,4 +60,10 @@ fn find_rc() -> Option<std::path::PathBuf> {
         }
     }
     None
+}
+
+#[cfg(not(target_os = "windows"))]
+fn main() {
+    // No-op on Linux: nothing to embed (no .rc / rc.exe).
+    println!("cargo:rerun-if-changed=build.rs");
 }

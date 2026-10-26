@@ -2,7 +2,7 @@
 name = "live-wallpaper"
 version = "0.1.1"
 edition = "2021"
-description = "Lightweight MP4 video live wallpaper for Windows 11"
+description = "Lightweight MP4 video live wallpaper for Windows"
 license = "MIT"
 authors = ["SAIBORC"]
 

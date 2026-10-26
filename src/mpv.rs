@@ -92,11 +92,55 @@ fn find_dll() -> Option<PathBuf> {
             dirs.push(cwd);
         }
     }
+    // Also check system library paths via pkg-config-style defaults.
     for dir in &dirs {
+        #[cfg(target_os = "linux")]
+        for name in ["libmpv.so", "libmpv.so.2", "libmpv.so.1"] {
+            let p = dir.join(name);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+        #[cfg(target_os = "windows")]
         for name in ["libmpv-2.dll", "mpv-2.dll", "mpv-1.dll"] {
             let p = dir.join(name);
             if p.exists() {
                 return Some(p);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        for name in ["libmpv.dylib", "libmpv.2.dylib", "libmpv.1.dylib"] {
+            let p = dir.join(name);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    // On Linux, also try common system install paths.
+    #[cfg(target_os = "linux")]
+    {
+        for prefix in ["/usr", "/usr/local", "/opt"] {
+            for name in ["libmpv.so", "libmpv.so.2", "libmpv.so.1"] {
+                for libdir in ["lib", "lib64"] {
+                    let p = std::path::Path::new(prefix).join(libdir).join(name);
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+    }
+    // On macOS, try Homebrew and common paths.
+    #[cfg(target_os = "macos")]
+    {
+        for prefix in ["/opt/homebrew", "/usr/local", "/usr"] {
+            for name in ["libmpv.dylib", "libmpv.2.dylib", "libmpv.1.dylib"] {
+                for libdir in ["lib", "lib64"] {
+                    let p = std::path::Path::new(prefix).join(libdir).join(name);
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
             }
         }
     }
@@ -428,9 +472,16 @@ impl Player {
         mpv.set_option_int("wid", surface as i64)?;
 
         let (vo, gpu_api, gpu_context, def_hwdec) = match renderer {
-            "vulkan" => ("gpu", Some("vulkan"), None, "d3d11va-copy"),
+            "vulkan" => ("gpu", Some("vulkan"), None, "auto"),
+            "opengl" => ("gpu", Some("opengl"), None, "auto"),
+            #[cfg(target_os = "windows")]
             "angle" => ("gpu", Some("opengl"), Some("angle"), "d3d11va-copy"),
+            #[cfg(target_os = "windows")]
             _ => ("gpu", Some("d3d11"), None, "auto"),
+            #[cfg(target_os = "linux")]
+            _ => ("gpu", Some("opengl"), None, "auto"),
+            #[cfg(target_os = "macos")]
+            _ => ("gpu", Some("opengl"), None, "auto"),
         };
         let hwdec = if hwdec_cfg == "auto" {
             def_hwdec
